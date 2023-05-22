@@ -7,11 +7,13 @@ ENV LANG=C.UTF-8
 ENV TZ=UTC
 RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
   python3 \
   libqpdf-dev \
   zlib1g \
-  liblept5
+  liblept5 \
+  s3fs \
+  libpq-dev
 
 FROM base as builder
 
@@ -27,7 +29,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   curl \
   git \
   libcairo2-dev \
-  pkg-config
+  pkg-config \
+  s3fs
 
 # Get the latest pip (Ubuntu version doesn't support manylinux2010)
 RUN \
@@ -49,7 +52,6 @@ COPY . /app
 WORKDIR /app
 
 RUN pip3 install --no-cache-dir .[test,webservice,watcher]
-
 FROM base
 
 # For Tesseract 5
@@ -80,6 +82,9 @@ COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 COPY --from=builder /app/misc/webservice.py /app/
 COPY --from=builder /app/misc/watcher.py /app/
+COPY --from=builder /app/misc/start_worker.py /app/
+COPY --from=builder /app/misc/database.py /app/
+COPY --from=builder /app/misc/argo.py /app/
 
 # Copy minimal project files to get the test suite.
 COPY --from=builder /app/pyproject.toml /app/README.md /app/
