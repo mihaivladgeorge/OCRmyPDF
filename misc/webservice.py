@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from flask import Flask, request, jsonify, send_file
 from werkzeug.utils import secure_filename
+from database import get_progress
 
 app = Flask(__name__)
 INPUT_DIRECTORY = os.getenv('OCR_INPUT_DIRECTORY', '/input')
@@ -41,10 +42,14 @@ def check():
             pass
         else:
             os.remove(os.path.join(app.config['DOWNLOAD_FOLDER'], unwanted_file))
-    file_number = len(os.listdir(app.config['DOWNLOAD_FOLDER']))
     files = os.listdir(app.config['DOWNLOAD_FOLDER'])
     filenames = ','.join(files)
-    if file_number == 0:
+    processing_files = ','.join(get_progress("pending"))
+    if filenames == "":
+        filenames = processing_files
+    elif processing_files != "" and filenames != "":
+        filenames += ',' + processing_files
+    if len(filenames) == 0:
         res = jsonify({'message': 'FILES_NOT_READY'})
     else:
         res = jsonify({'message': filenames})

@@ -166,3 +166,34 @@ def get_piece_jobs(status):
     finally:
         if conn is not None:
             conn.close()
+
+
+def get_progress(status):
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            host="postgres.default.svc.cluster.local",
+            database=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD)
+        cursor = conn.cursor()
+
+        result = []
+
+        cursor.execute("SELECT * FROM master WHERE status = %s", [status, ])
+        pending_jobs = cursor.fetchall()
+        for item in pending_jobs:
+            cursor.execute("SELECT COUNT(*) FROM pieces WHERE piece_id LIKE %s AND status = 'done'", [str(item[0]) + "%"])
+            finished_pieces = cursor.fetchone()
+            finished_pieces = int(finished_pieces[0])
+            expected_pieces = int(item[2])
+            result.append(str(item[1] + "-pg" + str(finished_pieces) + "/" + str(expected_pieces)))
+
+        cursor.close()
+
+        return result
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+    finally:
+        if conn is not None:
+            conn.close()
