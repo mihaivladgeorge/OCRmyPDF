@@ -85,6 +85,7 @@ def process_jobs():
         if wf_count is None or wf_count < MAX_CPU:
             print(f"Starting workflow for job {job}")
             start_workflow(job)
+            update_status("processing", job)
         else:
             print("The load is maximum, not processing any more pdfs at the moment...")
 
@@ -121,7 +122,6 @@ def check_master_jobs(status):
     finally:
         if conn is not None:
             conn.close()
-
 
 
 def routine():

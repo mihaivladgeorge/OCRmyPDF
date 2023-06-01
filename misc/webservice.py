@@ -1,107 +1,67 @@
-#!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2019 James R. Barlow
-# SPDX-License-Identifier: AGPL-3.0-or-later
-
-"""This is a simple web service/HTTP wrapper for OCRmyPDF.
-
-This may be more convenient than the command line tool for some Docker users.
-Note that OCRmyPDF uses Ghostscript, which is licensed under AGPLv3+. While
-OCRmyPDF is under GPLv3, this file is distributed under the Affero GPLv3+ license,
-to emphasize that SaaS deployments should make sure they comply with
-Ghostscript's license as well as OCRmyPDF's.
-"""
-
 from __future__ import annotations
 
 import os
-import shlex
-from subprocess import run
-from tempfile import TemporaryDirectory
-
-from flask import Flask, Response, request, send_from_directory
+from flask import Flask, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key = "secret"
-app.config['MAX_CONTENT_LENGTH'] = 50_000_000
-app.config.from_envvar("OCRMYPDF_WEBSERVICE_SETTINGS", silent=True)
-
-ALLOWED_EXTENSIONS = {"pdf"}
-
-
-def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+INPUT_DIRECTORY = os.getenv('OCR_INPUT_DIRECTORY', '/input')
+OUTPUT_DIRECTORY = os.getenv('OCR_OUTPUT_DIRECTORY', '/output')
+app.config['UPLOAD_FOLDER'] = INPUT_DIRECTORY
+app.config['DOWNLOAD_FOLDER'] = OUTPUT_DIRECTORY
 
 
-def do_ocrmypdf(file):
-    uploaddir = TemporaryDirectory(prefix="ocrmypdf-upload")
-    downloaddir = TemporaryDirectory(prefix="ocrmypdf-download")
+@app.route('/upload', methods=['POST'])
+def upload():
+    if 'file' not in request.files:
+        res = jsonify({'error': 'No file was uploaded'})
+        res.headers.add('Access-Control-Allow-Origin', '*')
+        return res
+    file = request.files['file']
+    if file.filename == '':
+        res = jsonify({'error': 'No file was selected'})
+        res.headers.add('Access-Control-Allow-Origin', '*')
+        return res
 
     filename = secure_filename(file.filename)
-    up_file = os.path.join(uploaddir.name, filename)
-    file.save(up_file)
 
-    down_file = os.path.join(downloaddir.name, filename)
+    save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
-    cmd_args = [arg for arg in shlex.split(request.form["params"])]
-    if "--sidecar" in cmd_args:
-        return Response("--sidecar not supported", 501, mimetype='text/plain')
+    file.save(save_path)
 
-    ocrmypdf_args = ["ocrmypdf", *cmd_args, up_file, down_file]
-    proc = run(ocrmypdf_args, capture_output=True, encoding="utf-8", check=False)
-    if proc.returncode != 0:
-        stderr = proc.stderr
-        return Response(stderr, 400, mimetype='text/plain')
-
-    return send_from_directory(downloaddir.name, filename)
+    res = jsonify({'message': 'Upload successful'})
+    res.headers.add('Access-Control-Allow-Origin', '*')
+    return res
 
 
-@app.route("/", methods=["GET", "POST"])
-def upload_file():
-    if request.method == "POST":
-        if "file" not in request.files:
-            return Response("No file in POST", 400, mimetype='text/plain')
-        file = request.files["file"]
-        if file.filename == "":
-            return Response("Empty filename", 400, mimetype='text/plain')
-        if not allowed_file(file.filename):
-            return Response("Invalid filename", 400, mimetype='text/plain')
-        if file and allowed_file(file.filename):
-            return do_ocrmypdf(file)
-        return Response("Some other problem", 400, mimetype='text/plain')
+@app.route('/check', methods=['GET'])
+def check():
+    for unwanted_file in os.listdir(app.config['DOWNLOAD_FOLDER']):
+        if unwanted_file.endswith(".pdf") or unwanted_file.endswith(".PDF"):
+            pass
+        else:
+            os.remove(os.path.join(app.config['DOWNLOAD_FOLDER'], unwanted_file))
+    file_number = len(os.listdir(app.config['DOWNLOAD_FOLDER']))
+    files = os.listdir(app.config['DOWNLOAD_FOLDER'])
+    filenames = ','.join(files)
+    if file_number == 0:
+        res = jsonify({'message': 'FILES_NOT_READY'})
+    else:
+        res = jsonify({'message': filenames})
 
-    return """
-    <!doctype html>
-    <title>OCRmyPDF webservice</title>
-    <h1>Upload a PDF (debug UI)</h1>
-    <form method=post enctype=multipart/form-data>
-      <label for="args">Command line parameters</label>
-      <input type=textbox name=params>
-      <label for="file">File to upload</label>
-      <input type=file name=file>
-      <input type=submit value=Upload>
-    </form>
-    <h4>Notice</h2>
-    <div style="font-size: 70%; max-width: 34em;">
-    <p>This is a webservice wrapper for OCRmyPDF.</p>
-    <p>Copyright 2019 James R. Barlow</p>
-    <p>This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-    </p>
-    <p>This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-    </p>
-    <p>
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
-    </p>
-    </div>
-    """
+    res.headers.add('Access-Control-Allow-Origin', '*')
+    return res
+
+
+@app.route('/download', methods=['GET'])
+def download():
+    file_name = request.args.get('filename')
+    path = os.path.join(app.config['DOWNLOAD_FOLDER'], file_name)
+    res = send_file(path, as_attachment=True)
+    res.headers.add('Access-Control-Allow-Origin', '*')
+    os.remove(path)
+    return res
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', debug=True, port=5000)
