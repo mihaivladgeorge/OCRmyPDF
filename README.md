@@ -4,6 +4,15 @@
 
 <img src="docs/images/logo.svg" width="240" alt="OCRmyPDF">
 
+This is a forked version of OCRmyPDF, modified to run distributed OCR on a kubernetes cluster.
+The custom Docker version is available here: https://hub.docker.com/repository/docker/vlastrutz/ocrmypdf/general.
+The `latest` tag is suited for minikube deployment and the `cloud` tag is suited for cloud deployment.
+
+The additions are:
+- A watcher system that uses MinIO, Postgres and Argo Workflows for managing distribution of tasks
+- A webserver for uploading, downloading and checking task progress
+- A script for starting the worker pods, triggered by Argo Workflows
+
 [![Build Status](https://github.com/ocrmypdf/OCRmyPDF/actions/workflows/build.yml/badge.svg)](https://github.com/ocrmypdf/OCRmyPDF/actions/workflows/build.yml) [![PyPI version][pypi]](https://pypi.org/project/ocrmypdf/) ![Homebrew version][homebrew] ![ReadTheDocs][docs] ![Python versions][pyversions]
 
 [pypi]: https://img.shields.io/pypi/v/ocrmypdf.svg "PyPI version"
